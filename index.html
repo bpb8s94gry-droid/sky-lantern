@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>天灯 · 许愿星河</title>
+    <meta name="description" content="在星空放飞属于你的天灯，写下心愿，让它飘向星河。">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", serif;
+            width: 100vw; height: 100vh; overflow: hidden;
+            background: #07071a;
+            user-select: none; -webkit-user-select: none;
+            cursor: default;
+        }
+
+        /* ===== 画布层 ===== */
+        #starCanvas, #particleCanvas {
+            position: fixed; inset: 0;
+        }
+        #starCanvas { z-index: 0; }
+        #particleCanvas { z-index: 5; pointer-events: none; }
+
+        /* ===== 心愿文字背景层 ===== */
+        #wishTextLayer {
+            position: fixed; inset: 0; z-index: 1; pointer-events: none;
+        }
+        .floating-wish {
+            position: absolute;
+            font-size: 15px; font-weight: 300;
+            letter-spacing: 2px;
+            white-space: nowrap;
+            text-shadow: 0 0 12px currentColor, 0 0 30px currentColor;
+            animation: wishFloat var(--fdur) linear forwards;
+            opacity: 0;
+        }
+        @keyframes wishFloat {
+            0%   { opacity: 0; transform: translateY(0) scale(0.8); }
+            8%   { opacity: var(--fopac); transform: translateY(-8vh) scale(1); }
+            85%  { opacity: var(--fopac); }
+            100% { opacity: 0; transform: translateY(-105vh) scale(0.9); }
+        }
+
+        /* ===== 天灯层 ===== */
+        #lanternsLayer {
+            position: fixed; inset: 0; z-index: 2; pointer-events: none;
+        }
+        #lanternsLayer .sky-lantern { pointer-events: auto; }
+
+        /* ===== 底部山峦 ===== */
+        .mountains {
+            position: fixed; bottom: 0; left: 0; right: 0; z-index: 3;
+            pointer-events: none;
+        }
+        .mountains svg { display: block; width: 100%; }
+
+        /* ===== 主界面 ===== */
+        .main-ui {
+            position: fixed; inset: 0; z-index: 10;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            pointer-events: none;
+        }
+        .main-ui > * { pointer-events: auto; }
+
+        .title-area { text-align: center; margin-bottom: 24px; }
+
+        .title {
+            font-size: 48px; font-weight: 300; color: #ffe0c0;
+            letter-spacing: 10px;
+            text-shadow: 0 0 40px rgba(255,160,60,0.35);
+        }
+        .subtitle {
+            font-size: 14px; color: rgba(255,210,160,0.55);
+            letter-spacing: 5px; margin-top: 10px;
+        }
+        .lantern-count {
+            display: inline-block; margin-top: 14px;
+            font-size: 13px; color: rgba(255,180,120,0.45);
+            letter-spacing: 2px;
+            background: rgba(255,150,50,0.04);
+            padding: 5px 18px; border-radius: 20px;
+            border: 1px solid rgba(255,150,50,0.08);
+        }
+        .lantern-count .num { color: #ffb866; font-weight: 600; font-size: 17px; margin: 0 3px; }
+
+        /* ===== 按钮 ===== */
+        .btn-area { margin-top: 6px; }
+        .btn-light {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 15px 36px; font-size: 17px; letter-spacing: 3px;
+            color: #fff; background: rgba(255,140,50,0.12);
+            border: 1px solid rgba(255,150,60,0.28);
+            border-radius: 50px; cursor: pointer;
+            transition: all 0.3s;
+            font-family: inherit; position: relative;
+        }
+        .btn-light:hover {
+            background: rgba(255,140,50,0.22);
+            border-color: rgba(255,170,80,0.5);
+            box-shadow: 0 0 30px rgba(255,140,40,0.2);
+            transform: translateY(-1px);
+        }
+        .btn-light .fire-icon { font-size: 20px; }
+
+        /* ===== 弹窗遮罩 ===== */
+        .modal-overlay {
+            position: fixed; inset: 0; z-index: 100;
+            background: rgba(5,5,15,0.82);
+            display: flex; align-items: center; justify-content: center;
+            opacity: 0; pointer-events: none;
+            transition: opacity 0.35s;
+        }
+        .modal-overlay.active { opacity: 1; pointer-events: auto; }
+
+        /* ===== 写心愿弹窗 ===== */
+        .modal {
+            background: #111128;
+            border: 1px solid rgba(255,160,60,0.18);
+            border-radius: 20px; padding: 38px 34px 30px;
+            width: 90%; max-width: 420px; text-align: center;
+            position: relative;
+            box-shadow: 0 0 40px rgba(255,140,40,0.08), 0 16px 48px rgba(0,0,0,0.5);
+        }
+        .modal-close {
+            position: absolute; top: 14px; right: 18px;
+            width: 32px; height: 32px; border-radius: 50%;
+            background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
+            color: rgba(255,255,255,0.4); font-size: 14px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.25s;
+        }
+        .modal-close:hover { background: rgba(255,255,255,0.08); color: #fff; }
+        .modal h3 {
+            font-size: 24px; font-weight: 300; color: #ffe0c0;
+            letter-spacing: 3px; margin-bottom: 6px;
+        }
+        .modal .hint {
+            font-size: 12px; color: rgba(255,200,150,0.4);
+            margin-bottom: 22px; letter-spacing: 1px;
+        }
+        .modal textarea {
+            width: 100%; height: 100px;
+            background: rgba(255,255,255,0.025);
+            border: 1px solid rgba(255,160,60,0.12);
+            border-radius: 12px; padding: 14px;
+            color: #ffe0c0; font-size: 15px; font-family: inherit;
+            resize: none; outline: none; letter-spacing: 1px; line-height: 1.7;
+            transition: border-color 0.3s;
+        }
+        .modal textarea:focus { border-color: rgba(255,160,60,0.4); }
+        .modal textarea::placeholder { color: rgba(255,200,150,0.18); }
+
+        /* 颜色选择 */
+        .color-picker { display: flex; gap: 10px; justify-content: center; margin: 18px 0 24px; }
+        .color-dot {
+            width: 28px; height: 28px; border-radius: 50%;
+            cursor: pointer; transition: all 0.25s;
+            border: 2px solid transparent;
+        }
+        .color-dot:hover { transform: scale(1.12); }
+        .color-dot.selected { border-color: #fff; box-shadow: 0 0 16px currentColor; }
+        .color-dot.c0 { background: #ff8c3a; color: #ff8c3a; }
+        .color-dot.c1 { background: #ff4d5a; color: #ff4d5a; }
+        .color-dot.c2 { background: #ffb833; color: #ffb833; }
+        .color-dot.c3 { background: #ff7eb3; color: #ff7eb3; }
+        .color-dot.c4 { background: #a78bfa; color: #a78bfa; }
+        .color-dot.c5 { background: #38bdf8; color: #38bdf8; }
+
+        .btn-release {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 13px 38px; font-size: 16px;
+            letter-spacing: 2px; color: #fff;
+            background: rgba(255,140,50,0.25);
+            border: 1px solid rgba(255,150,60,0.3);
+            border-radius: 50px; cursor: pointer;
+            transition: all 0.3s; font-family: inherit;
+        }
+        .btn-release:hover {
+            background: rgba(255,150,60,0.38);
+            box-shadow: 0 0 30px rgba(255,140,40,0.25);
+        }
+
+        /* ===== 阅读心愿弹窗 ===== */
+        .read-modal {
+            background: #111128;
+            border: 1px solid rgba(255,160,60,0.18);
+            border-radius: 20px; padding: 34px 30px;
+            width: 90%; max-width: 360px; text-align: center;
+            box-shadow: 0 0 40px rgba(255,140,40,0.08), 0 16px 48px rgba(0,0,0,0.5);
+            position: relative;
+        }
+        .read-modal .wish-text {
+            font-size: 18px; color: #ffe0c0; letter-spacing: 1px;
+            line-height: 2; margin: 10px 0 4px; font-weight: 300;
+        }
+        .read-modal .wish-time {
+            font-size: 11px; color: rgba(255,200,150,0.35); letter-spacing: 1px;
+        }
+        .wish-likes {
+            display: inline-flex; align-items: center; gap: 5px;
+            margin-top: 18px; padding: 7px 18px;
+            background: rgba(255,150,50,0.06);
+            border: 1px solid rgba(255,150,50,0.12);
+            border-radius: 18px; cursor: pointer;
+            color: rgba(255,200,150,0.6); font-size: 13px; letter-spacing: 1px;
+            transition: all 0.25s;
+        }
+        .wish-likes:hover { background: rgba(255,150,50,0.13); }
+
+        /* ===== 漂浮天灯 ===== */
+        .sky-lantern {
+            position: absolute; cursor: pointer;
+            will-change: transform;
+        }
+        .sky-lantern .body {
+            width: var(--sz);
+            height: calc(var(--sz) * 1.25);
+            background: radial-gradient(ellipse at 50% 28%, var(--clr-light), var(--clr) 72%, var(--clr-dark) 100%);
+            border-radius: 48% 48% 44% 44%;
+            margin: 0 auto;
+            box-shadow: 0 0 calc(var(--sz) * 0.5) var(--glow),
+                        0 0 calc(var(--sz) * 1.0) var(--glow);
+            transition: transform 0.1s;
+        }
+        .sky-lantern .bottom {
+            width: calc(var(--sz) * 0.5);
+            height: calc(var(--sz) * 0.18);
+            background: rgba(50,25,10,0.75);
+            margin: -1px auto 0; border-radius: 0 0 3px 3px;
+        }
+        .sky-lantern .flame {
+            width: calc(var(--sz) * 0.2);
+            height: calc(var(--sz) * 0.25);
+            background: radial-gradient(ellipse at 50% 85%, #fff 0%, #ffcc00 35%, #ff8800 70%, transparent 100%);
+            border-radius: 45% 45% 30% 30%;
+            margin: calc(var(--sz) * -0.04) auto 0;
+            box-shadow: 0 0 calc(var(--sz) * 0.35) #ff8800, 0 0 calc(var(--sz) * 0.18) #ffaa00;
+        }
+
+        /* ===== Toast ===== */
+        .toast {
+            position: fixed; bottom: 50px; left: 50%; transform: translateX(-50%);
+            z-index: 200; padding: 10px 24px;
+            background: rgba(18,18,38,0.9); color: #ffe0c0;
+            border: 1px solid rgba(255,150,50,0.25);
+            border-radius: 24px; font-size: 14px; letter-spacing: 1px;
+            pointer-events: none;
+            animation: toastIn 0.4s ease-out, toastOut 0.4s 1.8s ease-in forwards;
+        }
+        @keyframes toastIn { from { opacity: 0; transform: translateX(-50%) translateY(16px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+        @keyframes toastOut { from { opacity: 1; } to { opacity: 0; } }
+
+        /* ===== 响应式 ===== */
+        @media (max-width: 640px) {
+            .title { font-size: 32px; letter-spacing: 6px; }
+            .subtitle { font-size: 12px; letter-spacing: 3px; }
+            .btn-light { padding: 13px 28px; font-size: 15px; }
+            .modal { padding: 28px 20px; }
+            .read-modal { padding: 24px 18px; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 星空 -->
+    <canvas id="starCanvas"></canvas>
+
+    <!-- 粒子 -->
+    <canvas id="particleCanvas"></canvas>
+
+    <!-- 心愿文字背景 -->
+    <div id="wishTextLayer"></div>
+
+    <!-- 天灯 -->
+    <div id="lanternsLayer"></div>
+
+    <!-- 山峦 -->
+    <div class="mountains">
+        <svg viewBox="0 0 1440 180" preserveAspectRatio="none">
+            <path d="M0 180 L0 70 Q100 30 200 60 Q320 10 420 50 Q540 -5 660 30 Q780 5 880 40 Q1000 20 1120 45 Q1240 30 1360 50 L1440 55 L1440 180 Z"
+                  fill="#0a0a1e" opacity="0.7"/>
+            <path d="M0 180 L0 100 Q140 60 280 90 Q420 40 560 80 Q700 30 840 70 Q960 40 1080 65 Q1200 50 1320 70 L1440 65 L1440 180 Z"
+                  fill="#07071a" opacity="0.9"/>
+        </svg>
+    </div>
+
+    <!-- 主界面 -->
+    <div class="main-ui">
+        <div class="title-area">
+            <h1 class="title">天灯 · 许愿星河</h1>
+            <p class="subtitle">写下心愿 · 点燃天灯 · 飘向星空</p>
+            <div class="lantern-count">
+                夜空中已有 <span class="num" id="totalCount">0</span> 盏天灯
+            </div>
+        </div>
+        <div class="btn-area">
+            <button class="btn-light" id="mainBtn">
+                <span class="fire-icon">🔥</span> 放飞我的天灯
+            </button>
+        </div>
+    </div>
+
+    <!-- 写心愿弹窗 -->
+    <div class="modal-overlay" id="writeModal">
+        <div class="modal">
+            <button class="modal-close" id="closeWriteBtn">✕</button>
+            <h3>🏮 写下你的心愿</h3>
+            <p class="hint">天灯将带着你的心愿飘向星河</p>
+            <textarea id="wishInput" placeholder="写下你想说的话…&#10;对未来的期许、对某人的祝福、或藏在心底的秘密…" maxlength="140"></textarea>
+            <div class="color-picker">
+                <div class="color-dot c0 selected" data-idx="0"></div>
+                <div class="color-dot c1" data-idx="1"></div>
+                <div class="color-dot c2" data-idx="2"></div>
+                <div class="color-dot c3" data-idx="3"></div>
+                <div class="color-dot c4" data-idx="4"></div>
+                <div class="color-dot c5" data-idx="5"></div>
+            </div>
+            <button class="btn-release" id="releaseBtn">🔥 点燃 · 放飞</button>
+        </div>
+    </div>
+
+    <!-- 读心愿弹窗 -->
+    <div class="modal-overlay" id="readModal">
+        <div class="read-modal">
+            <button class="modal-close" id="closeReadBtn">✕</button>
+            <div style="font-size:36px;">🏮</div>
+            <p class="wish-text" id="readWishText"></p>
+            <p class="wish-time" id="readWishTime"></p>
+            <div class="wish-likes" id="likeBtn">❤️ <span id="readLikes">0</span> 温暖</div>
+        </div>
+    </div>
+
+    <script>
+    (function() {
+        // ==================== 颜色配置 ====================
+        const COLORS = [
+            { color: '#ff7b2e', light: '#ffaa60', dark: '#c04a10', glow: '#ff8c3a' },
+            { color: '#e84040', light: '#ff6b6b', dark: '#a02020', glow: '#ff4d5a' },
+            { color: '#e6a020', light: '#ffcc44', dark: '#a07010', glow: '#ffb833' },
+            { color: '#e86090', light: '#ff9ebb', dark: '#b03060', glow: '#ff7eb3' },
+            { color: '#7c5ce7', light: '#a78bfa', dark: '#5a38b0', glow: '#a78bfa' },
+            { color: '#1e90d0', light: '#5cc8ff', dark: '#1060a0', glow: '#38bdf8' },
+        ];
+
+        let selectedColorIdx = 0;
+        let currentReadId = null;
+        let allLanterns = [];
+        let skyLanterns = [];  // 当前天空中活跃的天灯对象
+        const MAX_SKY = 14;
+
+        // ==================== 数据 ====================
+        function loadLanterns() {
+            try { return JSON.parse(localStorage.getItem('sky_lanterns_v2') || '[]'); }
+            catch (e) { return []; }
+        }
+        function saveLanterns() {
+            try { localStorage.setItem('sky_lanterns_v2', JSON.stringify(allLanterns)); }
+            catch (e) {}
+        }
+        allLanterns = loadLanterns();
+
+        // 预置心愿
+        if (allLanterns.length === 0) {
+            const demos = [
+                // ---- 学业梦想 ----
+                ['2026高考上岸！！目标清华！', 2],
+                ['考上研究生，去看更大的世界', 4],
+                ['期末不挂科，门门90+！', 5],
+                ['雅思7.5，出国读梦校', 3],
+                ['考研上岸，一研为定！', 1],
+                ['拿下心仪的offer，月薪过万', 0],
+                ['考上公务员，稳定生活', 4],
+                ['专升本成功，改写人生', 2],
+                // ---- 亲情 ----
+                ['希望爸妈身体健康，永远开心 ❤️', 1],
+                ['奶奶的病快点好起来 🙏', 3],
+                ['爸爸少抽点烟，保重身体', 0],
+                ['妈妈的白头发不要再多了', 3],
+                ['今年过年一定回家陪家人', 2],
+                ['希望弟弟考上好高中', 5],
+                ['愿天堂的爷爷为我骄傲', 4],
+                // ---- 爱情 ----
+                ['想和她一起去同一所大学', 5],
+                ['暗恋的人也能喜欢我', 3],
+                ['异地恋坚持下去，修成正果', 1],
+                ['遇到一个真心对我好的人', 0],
+                ['和他一直走到结婚', 2],
+                ['希望自己不要再恋爱脑了', 4],
+                // ---- 友情 ----
+                ['和最好的朋友永远不散', 5],
+                ['希望能交到知心朋友', 0],
+                ['室友关系和睦，天天开心', 2],
+                // ---- 个人成长 ----
+                ['成为一个温柔又强大的人', 2],
+                ['今年一定要瘦20斤！', 3],
+                ['学会爱自己，不再内耗', 4],
+                ['改掉拖延症，说到做到', 0],
+                ['戒掉手机瘾，专注当下', 5],
+                ['每天坚持跑步，跑进马拉松', 1],
+                ['学会吉他，弹给喜欢的人听', 3],
+                ['读完50本书，充实自己', 4],
+                // ---- 生活愿望 ----
+                ['希望世界和平，没有战争', 4],
+                ['愿每个善良的人都被温柔以待', 0],
+                ['愿所有的努力都不被辜负', 0],
+                ['攒够钱带爸妈去旅行', 2],
+                ['养一只可爱的猫咪 🐱', 3],
+                ['去西藏看一次真正的星空', 5],
+                ['在海边看一次日出日落', 1],
+                ['吃遍全国所有美食', 0],
+                ['拥有一间属于自己的小房子', 4],
+                ['中一次彩票大奖！', 2],
+                ['每天都能睡到自然醒', 5],
+                // ---- 温暖的话语 ----
+                ['一切都会好起来的，加油', 0],
+                ['你值得这世间所有的美好', 3],
+                ['别怕，慢慢来，比较快', 4],
+                ['今天的不开心就到此为止', 5],
+                ['做自己的光，不需要太亮', 2],
+                ['允许一切发生，接纳自己', 1],
+                ['人生是旷野，不是轨道', 0],
+            ];
+            demos.forEach(([w, c], i) => {
+                allLanterns.push({
+                    id: 'd' + i, wish: w, color: c,
+                    time: Date.now() - i * 2400000,
+                    likes: Math.floor(Math.random() * 35) + 3,
+                });
+            });
+            saveLanterns();
+        }
+
+        // ==================== 星空画布 ====================
+        const starCanvas = document.getElementById('starCanvas');
+        const starCtx = starCanvas.getContext('2d');
+        let stars = [], W, H;
+
+        function resizeStarCanvas() {
+            W = starCanvas.width = window.innerWidth;
+            H = starCanvas.height = window.innerHeight;
+            stars = [];
+            const count = Math.floor(W * H / 2800);  // 减少星星数量
+            for (let i = 0; i < count; i++) {
+                stars.push({
+                    x: Math.random() * W,
+                    y: Math.random() * H * 0.72,
+                    r: Math.random() * 1.4 + 0.2,
+                    phase: Math.random() * Math.PI * 2,
+                    speed: Math.random() * 0.012 + 0.004,
+                    alpha: Math.random() * 0.45 + 0.3,
+                });
+            }
+        }
+        resizeStarCanvas();
+        window.addEventListener('resize', resizeStarCanvas);
+
+        // 流星
+        let meteor = null;
+        function spawnMeteor() {
+            if (meteor) return;
+            meteor = {
+                x: Math.random() * W * 0.75,
+                y: Math.random() * H * 0.25,
+                vx: 3.5 + Math.random() * 5,
+                vy: 1.5 + Math.random() * 2.5,
+                life: 1,
+                len: 50 + Math.random() * 70,
+            };
+        }
+
+        function drawStars(ts) {
+            starCtx.clearRect(0, 0, W, H);
+
+            for (const s of stars) {
+                const alpha = s.alpha + Math.sin(s.phase + ts * s.speed) * 0.22;
+                starCtx.beginPath();
+                starCtx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+                starCtx.fillStyle = `rgba(255,240,210,${Math.max(0.08, alpha)})`;
+                starCtx.fill();
+            }
+
+            // 流星
+            if (meteor) {
+                const m = meteor;
+                const grad = starCtx.createLinearGradient(m.x, m.y, m.x - m.vx * 10, m.y - m.vy * 10);
+                grad.addColorStop(0, `rgba(255,255,255,${m.life})`);
+                grad.addColorStop(1, 'rgba(255,255,255,0)');
+                starCtx.beginPath();
+                starCtx.moveTo(m.x, m.y);
+                starCtx.lineTo(m.x - m.vx * 10, m.y - m.vy * 10);
+                starCtx.strokeStyle = grad;
+                starCtx.lineWidth = 1.2;
+                starCtx.stroke();
+                m.x += m.vx;
+                m.y += m.vy;
+                m.life -= 0.014;
+                if (m.life <= 0) meteor = null;
+            }
+        }
+
+        // ==================== 粒子画布 ====================
+        const ptCanvas = document.getElementById('particleCanvas');
+        const ptCtx = ptCanvas.getContext('2d');
+        let particles = [];
+
+        function resizePtCanvas() {
+            ptCanvas.width = window.innerWidth;
+            ptCanvas.height = window.innerHeight;
+        }
+        resizePtCanvas();
+        window.addEventListener('resize', resizePtCanvas);
+
+        // 爆发粒子
+        function burstParticles(x, y, glowColor) {
+            const count = 40;
+            for (let i = 0; i < count; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 1.5 + Math.random() * 5;
+                particles.push({
+                    x, y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed - 2,
+                    life: 1,
+                    decay: 0.012 + Math.random() * 0.025,
+                    size: 1.5 + Math.random() * 3,
+                    color: glowColor,
+                });
+            }
+            // 再加一圈小火苗
+            for (let i = 0; i < 15; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 1 + Math.random() * 2.5;
+                particles.push({
+                    x, y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed - 1.5,
+                    life: 1,
+                    decay: 0.02 + Math.random() * 0.03,
+                    size: 2 + Math.random() * 4,
+                    color: '#ffcc66',
+                });
+            }
+        }
+
+        function drawParticles() {
+            ptCtx.clearRect(0, 0, ptCanvas.width, ptCanvas.height);
+
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy -= 0.03;  // 轻微上升
+                p.life -= p.decay;
+
+                if (p.life <= 0) {
+                    particles.splice(i, 1);
+                    continue;
+                }
+
+                ptCtx.beginPath();
+                ptCtx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+                ptCtx.fillStyle = p.color.replace(')', `,${p.life})`).replace('rgb', 'rgba');
+                if (p.color.startsWith('#')) {
+                    const r = parseInt(p.color.slice(1,3), 16);
+                    const g = parseInt(p.color.slice(3,5), 16);
+                    const b = parseInt(p.color.slice(5,7), 16);
+                    ptCtx.fillStyle = `rgba(${r},${g},${b},${p.life})`;
+                }
+                ptCtx.fill();
+            }
+        }
+
+        // ==================== 屏幕震动 ====================
+        function shakeScreen() {
+            const body = document.body;
+            const orig = body.style.transform || '';
+            const dur = 400;
+            const start = performance.now();
+
+            function tick(ts) {
+                const elapsed = ts - start;
+                if (elapsed > dur) {
+                    body.style.transform = orig;
+                    return;
+                }
+                const decay = 1 - elapsed / dur;
+                const dx = (Math.random() - 0.5) * 8 * decay;
+                const dy = (Math.random() - 0.5) * 6 * decay;
+                body.style.transform = `translate(${dx}px,${dy}px)`;
+                requestAnimationFrame(tick);
+            }
+            requestAnimationFrame(tick);
+        }
+
+        // ==================== Toast ====================
+        function showToast(msg) {
+            const t = document.createElement('div');
+            t.className = 'toast';
+            t.textContent = msg;
+            document.body.appendChild(t);
+            setTimeout(() => t.remove(), 2300);
+        }
+
+        // ==================== 天空天灯管理 ====================
+        const lanternsLayer = document.getElementById('lanternsLayer');
+
+        function createLanternEl(lantern) {
+            const el = document.createElement('div');
+            el.className = 'sky-lantern';
+            el.dataset.id = lantern.id;
+            const sz = 26 + Math.random() * 12;
+            const c = COLORS[lantern.color];
+            el.style.setProperty('--sz', sz + 'px');
+            el.style.setProperty('--clr', c.color);
+            el.style.setProperty('--clr-light', c.light);
+            el.style.setProperty('--clr-dark', c.dark);
+            el.style.setProperty('--glow', c.glow);
+            el.innerHTML = '<div class="body"></div><div class="flame"></div><div class="bottom"></div>';
+
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                openReadModal(lantern);
+            });
+
+            return el;
+        }
+
+        // 天灯飞行状态
+        function spawnSkyLantern(lantern, fromBottom = false) {
+            if (skyLanterns.length >= MAX_SKY) {
+                // 移除最老的一个
+                const oldest = skyLanterns.shift();
+                if (oldest.el.parentNode) oldest.el.remove();
+            }
+
+            const el = createLanternEl(lantern);
+            const startX = fromBottom ? (35 + Math.random() * 30) : (5 + Math.random() * 88);
+            const startY = fromBottom ? 75 : (-5 - Math.random() * 10);
+
+            const obj = {
+                id: lantern.id,
+                el: el,
+                x: startX,
+                y: startY,
+                swayPhase: Math.random() * Math.PI * 2,
+                swaySpeed: 0.015 + Math.random() * 0.025,
+                swayAmp: 3 + Math.random() * 5,
+                riseSpeed: 0.03 + Math.random() * 0.05,  // vh per frame at 60fps
+                scale: fromBottom ? 0.25 : (0.7 + Math.random() * 0.3),
+                targetScale: 0.7 + Math.random() * 0.3,
+                opacity: fromBottom ? 0 : (0.7 + Math.random() * 0.25),
+                targetOpacity: 0.7 + Math.random() * 0.25,
+            };
+
+            el.style.left = obj.x + '%';
+            el.style.bottom = obj.y + '%';
+            el.style.transform = `scale(${obj.scale})`;
+            el.style.opacity = obj.opacity;
+
+            lanternsLayer.appendChild(el);
+            skyLanterns.push(obj);
+
+            // 如果是放飞的新天灯，做入场动画
+            if (fromBottom) {
+                // 弹入动画
+                const startTime = performance.now();
+                function enterAnim(ts) {
+                    const elapsed = (ts - startTime) / 1000;
+                    const found = skyLanterns.find(s => s.id === obj.id);
+                    if (!found) return;
+
+                    if (elapsed < 0.6) {
+                        // 0-0.6s: 快速变大 + 变亮
+                        const t = elapsed / 0.6;
+                        const ease = 1 - Math.pow(1 - t, 3);  // ease-out
+                        found.scale = 0.25 + (found.targetScale - 0.25) * ease;
+                        found.opacity = 0 + found.targetOpacity * ease;
+                        found.y = 75 - 2 * ease;  // 微微上升
+                        el.style.transform = `scale(${found.scale})`;
+                        el.style.opacity = found.opacity;
+                        el.style.bottom = found.y + '%';
+                        requestAnimationFrame(enterAnim);
+                    } else {
+                        found.scale = found.targetScale;
+                        found.opacity = found.targetOpacity;
+                        found.y = 73;
+                        el.style.transform = `scale(${found.scale})`;
+                        el.style.opacity = found.opacity;
+                        el.style.bottom = found.y + '%';
+                    }
+                }
+                requestAnimationFrame(enterAnim);
+            }
+        }
+
+        // 更新所有天灯位置（requestAnimationFrame）
+        function updateLanterns(ts) {
+            for (let i = skyLanterns.length - 1; i >= 0; i--) {
+                const s = skyLanterns[i];
+                s.y += s.riseSpeed;
+                s.swayPhase += s.swaySpeed;
+
+                const sway = Math.sin(s.swayPhase) * s.swayAmp;
+                s.el.style.left = (s.x + sway / window.innerWidth * 100) + '%';
+                s.el.style.bottom = s.y + '%';
+
+                // 飘出屏幕顶部
+                if (s.y > 115) {
+                    s.el.remove();
+                    skyLanterns.splice(i, 1);
+                }
+            }
+
+            // 如果天灯不够，补充
+            if (skyLanterns.length < 8 && allLanterns.length > 0) {
+                const r = allLanterns[Math.floor(Math.random() * allLanterns.length)];
+                spawnSkyLantern(r, false);
+            }
+        }
+
+        // 初始化天空
+        function initSky() {
+            lanternsLayer.innerHTML = '';
+            skyLanterns = [];
+            if (allLanterns.length === 0) return;
+            const count = Math.min(MAX_SKY, allLanterns.length);
+            const shuffled = [...allLanterns].sort(() => Math.random() - 0.5);
+            for (let i = 0; i < count; i++) {
+                const obj = createLanternEl(shuffled[i % shuffled.length]);
+                const x = 5 + (i / count) * 85 + (Math.random() - 0.5) * 8;
+                const y = 15 + Math.random() * 70;
+                const el = obj;
+                el.style.left = x + '%';
+                el.style.bottom = y + '%';
+                el.style.transform = `scale(${0.7 + Math.random() * 0.3})`;
+                el.style.opacity = 0.65 + Math.random() * 0.3;
+                lanternsLayer.appendChild(el);
+                skyLanterns.push({
+                    id: shuffled[i % shuffled.length].id,
+                    el, x, y,
+                    swayPhase: Math.random() * Math.PI * 2,
+                    swaySpeed: 0.015 + Math.random() * 0.025,
+                    swayAmp: 3 + Math.random() * 5,
+                    riseSpeed: 0.03 + Math.random() * 0.05,
+                    scale: 0.7 + Math.random() * 0.3,
+                    targetScale: 0.7 + Math.random() * 0.3,
+                    opacity: 0.65 + Math.random() * 0.3,
+                    targetOpacity: 0.7,
+                });
+            }
+        }
+        initSky();
+
+        // ==================== 弹窗 ====================
+        const writeModal = document.getElementById('writeModal');
+        const readModal = document.getElementById('readModal');
+        const wishInput = document.getElementById('wishInput');
+
+        function openWriteModal() {
+            writeModal.classList.add('active');
+            wishInput.focus();
+        }
+        function closeWriteModal() {
+            writeModal.classList.remove('active');
+            wishInput.value = '';
+        }
+        function openReadModal(lantern) {
+            currentReadId = lantern.id;
+            document.getElementById('readWishText').textContent = '「' + lantern.wish + '」';
+            const d = new Date(lantern.time);
+            document.getElementById('readWishTime').textContent =
+                d.getFullYear() + '年' + (d.getMonth()+1) + '月' + d.getDate() + '日 ' +
+                String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+            document.getElementById('readLikes').textContent = lantern.likes || 0;
+            readModal.classList.add('active');
+        }
+        function closeReadModal() {
+            readModal.classList.remove('active');
+            currentReadId = null;
+        }
+
+        // ==================== 事件绑定 ====================
+        document.getElementById('mainBtn').addEventListener('click', openWriteModal);
+        document.getElementById('closeWriteBtn').addEventListener('click', closeWriteModal);
+        document.getElementById('closeReadBtn').addEventListener('click', closeReadModal);
+
+        writeModal.addEventListener('click', function(e) {
+            if (e.target === writeModal) closeWriteModal();
+        });
+        readModal.addEventListener('click', function(e) {
+            if (e.target === readModal) closeReadModal();
+        });
+
+        // 颜色选择
+        document.querySelectorAll('.color-dot').forEach(dot => {
+            dot.addEventListener('click', function() {
+                selectedColorIdx = parseInt(this.dataset.idx);
+                document.querySelectorAll('.color-dot').forEach(d => d.classList.remove('selected'));
+                this.classList.add('selected');
+            });
+        });
+
+        // 放飞！
+        document.getElementById('releaseBtn').addEventListener('click', function() {
+            const wish = wishInput.value.trim();
+            if (!wish) {
+                wishInput.focus();
+                wishInput.style.borderColor = 'rgba(255,80,50,0.55)';
+                setTimeout(() => { wishInput.style.borderColor = ''; }, 600);
+                return;
+            }
+
+            const lantern = {
+                id: 'u' + Date.now().toString(36) + Math.random().toString(36).slice(2,6),
+                wish, color: selectedColorIdx,
+                time: Date.now(), likes: 0,
+            };
+
+            allLanterns.unshift(lantern);
+            if (allLanterns.length > 200) allLanterns.length = 200;
+            saveLanterns();
+            document.getElementById('totalCount').textContent = allLanterns.length;
+
+            closeWriteModal();
+
+            // 🎆 特效序列
+            // 1. 粒子爆发（屏幕底部中央）
+            const burstX = window.innerWidth / 2;
+            const burstY = window.innerHeight * 0.75;
+            burstParticles(burstX, burstY, COLORS[selectedColorIdx].glow);
+
+            // 2. 屏幕微震
+            shakeScreen();
+
+            // 3. 天灯从底部升起
+            spawnSkyLantern(lantern, true);
+
+            // 4. 心愿文字也飘入背景
+            const shortWish = wish.length > 20 ? wish.slice(0, 18) + '…' : wish;
+            const fel = document.createElement('div');
+            fel.className = 'floating-wish';
+            fel.textContent = shortWish;
+            fel.style.left = (30 + Math.random() * 40) + '%';
+            fel.style.bottom = '10%';
+            fel.style.color = COLORS[selectedColorIdx].light;
+            fel.style.setProperty('--fdur', '22s');
+            fel.style.setProperty('--fopac', '0.35');
+            if (wish.length > 15) fel.style.fontSize = '13px';
+            wishTextLayer.appendChild(fel);
+            fel.addEventListener('animationend', () => fel.remove());
+
+            // 5. 提示
+            showToast('🕯️ 天灯已飘向星河...');
+        });
+
+        // 点赞
+        document.getElementById('likeBtn').addEventListener('click', function() {
+            if (!currentReadId) return;
+            const l = allLanterns.find(x => x.id === currentReadId);
+            if (l) {
+                l.likes = (l.likes || 0) + 1;
+                document.getElementById('readLikes').textContent = l.likes;
+                saveLanterns();
+            }
+        });
+
+        // 键盘
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeWriteModal();
+                closeReadModal();
+            }
+            if (e.key === ' ' && !writeModal.classList.contains('active') && !readModal.classList.contains('active')) {
+                e.preventDefault();
+                openWriteModal();
+            }
+        });
+
+        // ==================== 更新计数 ====================
+        document.getElementById('totalCount').textContent = allLanterns.length;
+
+        // ==================== 心愿文字背景 ====================
+        const wishTextLayer = document.getElementById('wishTextLayer');
+        let floatingTexts = [];
+        const MAX_FLOATING_TEXTS = 15;
+
+        function spawnFloatingWish() {
+            if (floatingTexts.length >= MAX_FLOATING_TEXTS || allLanterns.length === 0) return;
+
+            // 随机选一个心愿
+            const lantern = allLanterns[Math.floor(Math.random() * allLanterns.length)];
+            const text = lantern.wish.length > 20
+                ? lantern.wish.slice(0, 18) + '…'
+                : lantern.wish;
+            const colorIdx = lantern.color;
+            const c = COLORS[colorIdx];
+
+            const el = document.createElement('div');
+            el.className = 'floating-wish';
+            el.textContent = text;
+            el.style.left = (3 + Math.random() * 82) + '%';
+            el.style.bottom = (-3 - Math.random() * 8) + '%';
+            el.style.color = c.light;
+            el.style.setProperty('--fdur', (20 + Math.random() * 25) + 's');
+            el.style.setProperty('--fopac', (0.25 + Math.random() * 0.2));
+            el.style.animationDelay = '0s';
+
+            // 给长文本更小的字号
+            if (lantern.wish.length > 15) el.style.fontSize = '13px';
+
+            wishTextLayer.appendChild(el);
+
+            const obj = { el, id: lantern.id };
+            floatingTexts.push(obj);
+
+            // 动画结束后回收
+            el.addEventListener('animationend', () => {
+                el.remove();
+                const idx = floatingTexts.indexOf(obj);
+                if (idx >= 0) floatingTexts.splice(idx, 1);
+            });
+        }
+
+        // 定期补充文字
+        function manageFloatingTexts() {
+            if (floatingTexts.length < MAX_FLOATING_TEXTS) {
+                spawnFloatingWish();
+            }
+        }
+        // 初始填充
+        for (let i = 0; i < 10; i++) spawnFloatingWish();
+
+        // ==================== 主循环 ====================
+        function mainLoop(ts) {
+            drawStars(ts);
+            drawParticles();
+            // 每3帧更新一次天灯位置（~20fps，减少计算）
+            if (Math.floor(ts / 50) !== Math.floor((ts - 16) / 50)) {
+                updateLanterns(ts);
+            }
+            // 流星概率
+            if (Math.random() < 0.006) spawnMeteor();
+            // 每2秒补充心愿文字
+            if (Math.floor(ts / 2000) !== Math.floor((ts - 50) / 2000)) {
+                manageFloatingTexts();
+            }
+            requestAnimationFrame(mainLoop);
+        }
+        requestAnimationFrame(mainLoop);
+
+        console.log('🏮 天灯 · 许愿星河 就绪');
+        console.log('   ✨ 点击天灯阅读心愿');
+        console.log('   ⌨️  按空格键写心愿');
+    })();
+    </script>
+</body>
+</html>
