@@ -285,6 +285,55 @@
             .music-btn { bottom: 14px; left: 14px; width: 36px; height: 36px; font-size: 15px; }
         }
 
+        /* ===== 同步设置按钮 ===== */
+        .sync-setup-btn {
+            position: fixed; bottom: 20px; left: 72px; z-index: 50;
+            width: 42px; height: 42px; border-radius: 50%;
+            background: rgba(255,140,50,0.1);
+            border: 1px solid rgba(255,150,60,0.2);
+            color: rgba(255,200,150,0.5);
+            font-size: 18px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.4s;
+        }
+        .sync-setup-btn:hover { color: #ffe0c0; border-color: rgba(255,150,60,0.4); }
+        .sync-setup-btn.synced {
+            color: #4ade80; border-color: rgba(74,222,128,0.4);
+            background: rgba(74,222,128,0.1);
+            box-shadow: 0 0 16px rgba(74,222,128,0.15);
+        }
+        @media (max-width: 640px) {
+            .sync-setup-btn { bottom: 14px; left: 58px; width: 36px; height: 36px; font-size: 15px; }
+        }
+
+        /* ===== 同步token输入弹窗 ===== */
+        .token-modal {
+            background: #111128; border: 1px solid rgba(255,160,60,0.18);
+            border-radius: 20px; padding: 30px 28px 24px;
+            width: 90%; max-width: 380px; text-align: center;
+            box-shadow: 0 0 40px rgba(255,140,40,0.08), 0 16px 48px rgba(0,0,0,0.5);
+            position: relative;
+        }
+        .token-modal h3 { font-size: 20px; font-weight: 300; color: #ffe0c0; letter-spacing: 2px; margin-bottom: 14px; }
+        .token-modal input {
+            width: 100%; padding: 10px 14px; border-radius: 10px;
+            background: rgba(255,255,255,0.03); border: 1px solid rgba(255,160,60,0.15);
+            color: #ffe0c0; font-size: 13px; font-family: monospace; outline: none;
+            margin-bottom: 14px;
+        }
+        .token-modal input:focus { border-color: rgba(255,160,60,0.45); }
+        .token-modal .hint2 {
+            font-size: 11px; color: rgba(255,200,150,0.35); margin-bottom: 16px; line-height: 1.6;
+        }
+        .token-modal .btn-small {
+            display: inline-block; padding: 8px 28px; font-size: 14px;
+            letter-spacing: 1px; color: #fff;
+            background: rgba(255,140,50,0.2); border: 1px solid rgba(255,150,60,0.3);
+            border-radius: 20px; cursor: pointer; font-family: inherit;
+            transition: all 0.3s;
+        }
+        .token-modal .btn-small:hover { background: rgba(255,150,60,0.35); }
+
         /* ===== 响应式：手机端 ===== */
         @media (max-width: 640px) {
             .title { font-size: 28px; letter-spacing: 4px; }
@@ -332,6 +381,8 @@
     <!-- 音乐按钮 -->
     <button class="music-btn on" id="musicBtn" title="背景音乐">🔊</button>
 
+    <!-- 同步设置按钮 -->
+    <button class="sync-setup-btn" id="syncSetupBtn" title="云端同步设置">☁️</button>
     <!-- 心愿文字背景 -->
     <div id="wishTextLayer"></div>
 
@@ -380,6 +431,20 @@
                 <div class="color-dot c5" data-idx="5"></div>
             </div>
             <button class="btn-release" id="releaseBtn">🔥 点燃 · 放飞</button>
+        </div>
+    </div>
+
+    <!-- 同步设置弹窗 -->
+    <div class="modal-overlay" id="syncModal">
+        <div class="token-modal">
+            <button class="modal-close" id="closeSyncBtn">✕</button>
+            <h3>☁️ 云端同步设置</h3>
+            <p class="hint2">输入 GitHub Token 后，手机和电脑将共享天灯数据。<br>Token 只存在你的浏览器里，不会上传。</p>
+            <input type="password" id="tokenInput" placeholder="ghp_xxxxxxxxxxxx">
+            <button class="btn-small" id="saveTokenBtn">💾 保存并启用同步</button>
+            <p style="margin-top:10px;font-size:10px;color:rgba(255,200,150,0.25);">
+                获取 Token: GitHub → Settings → Developer settings → Personal access tokens → 勾选 repo
+            </p>
         </div>
     </div>
 
@@ -448,19 +513,118 @@
             resizePtCanvas();
         });
 
-        // ==================== 数据 ====================
-        function loadLanterns() {
+        // ==================== 云端数据同步 ====================
+        const GH_USER = 'bpb8s94gry-droid';
+        const GH_REPO = 'sky-lantern';
+        const GH_FILE = 'lanterns.json';
+        const GH_API = `https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/${GH_FILE}`;
+        const GH_RAW = `https://raw.githubusercontent.com/${GH_USER}/${GH_REPO}/master/${GH_FILE}`;
+        let remoteSHA = null;
+        let syncPending = false;
+
+        function getToken() {
+            return localStorage.getItem('gh_sync_token') || '';
+        }
+        function setToken(t) {
+            localStorage.setItem('gh_sync_token', t);
+        }
+        function hasToken() {
+            return !!getToken();
+        }
+
+        async function loadLanterns() {
+            try {
+                const resp = await fetch(GH_RAW + '?t=' + Date.now());
+                if (!resp.ok) throw new Error('fetch failed');
+                const data = await resp.json();
+                if (Array.isArray(data) && data.length > 0) {
+                    return data;
+                }
+            } catch (e) { /* 文件还不存在，用本地回退 */ }
+            // 回退到 localStorage
             try { return JSON.parse(localStorage.getItem('sky_lanterns_v2') || '[]'); }
             catch (e) { return []; }
         }
-        function saveLanterns() {
-            try { localStorage.setItem('sky_lanterns_v2', JSON.stringify(allLanterns)); }
-            catch (e) {}
-        }
-        allLanterns = loadLanterns();
 
-        // 预置心愿
-        if (allLanterns.length === 0) {
+        async function saveLanterns() {
+            if (syncPending || !hasToken()) return;
+            syncPending = true;
+            try {
+                // 先获取最新 SHA
+                const getResp = await fetch(GH_API, {
+                    headers: { 'Authorization': 'Bearer ' + getToken(), 'Accept': 'application/vnd.github+json' }
+                });
+                if (getResp.ok) {
+                    const info = await getResp.json();
+                    remoteSHA = info.sha;
+                    // 合并远程数据到本地
+                    const remoteData = JSON.parse(atob(info.content.replace(/\s/g, '')));
+                    const merged = mergeLanterns(allLanterns, remoteData);
+                    allLanterns = merged;
+                }
+
+                const content = btoa(unescape(encodeURIComponent(JSON.stringify(allLanterns, null, 2))));
+                const body = JSON.stringify({
+                    message: '🕯️ 更新天灯数据',
+                    content: content,
+                    sha: remoteSHA
+                });
+                const putResp = await fetch(GH_API, {
+                    method: 'PUT',
+                    headers: { 'Authorization': 'Bearer ' + getToken(), 'Accept': 'application/vnd.github+json' },
+                    body: body
+                });
+                if (putResp.ok) {
+                    const result = await putResp.json();
+                    remoteSHA = result.content.sha;
+                }
+            } catch (e) { /* 静默失败 */ }
+            syncPending = false;
+        }
+
+        function mergeLanterns(local, remote) {
+            const map = {};
+            remote.forEach(l => { map[l.id] = l; });
+            local.forEach(l => {
+                if (!map[l.id]) { map[l.id] = l; }
+                else { map[l.id].likes = Math.max(map[l.id].likes || 0, l.likes || 0); }
+            });
+            const merged = Object.values(map).sort((a, b) => b.time - a.time);
+            return merged.slice(0, 500);
+        }
+
+        // 初始化: 从云端加载
+        let dataReady = false;
+        (async function initData() {
+            allLanterns = await loadLanterns();
+            ensureDemoData();
+            dataReady = true;
+            updateCount();
+            initSky();
+            for (let i = 0; i < MAX_FLOATING_TEXTS; i++) spawnFloatingWish();
+        })();
+
+        // 定期从云端拉取更新（其他设备的新天灯）
+        setInterval(async () => {
+            if (!dataReady) return;
+            try {
+                const resp = await fetch(GH_RAW + '?t=' + Date.now());
+                if (resp.ok) {
+                    const remote = await resp.json();
+                    if (Array.isArray(remote)) {
+                        const oldCount = allLanterns.length;
+                        allLanterns = mergeLanterns(allLanterns, remote);
+                        if (allLanterns.length !== oldCount) {
+                            updateCount();
+                        }
+                    }
+                }
+            } catch (e) {}
+        }, 5000);
+
+        // 预置心愿（云端或本地都没有数据时才写入）
+        function ensureDemoData() {
+            if (allLanterns.length > 0) return;
             const demos = [
                 // ---- 学业梦想 ----
                 ['2026高考上岸！！目标清华！', 2],
@@ -850,8 +1014,6 @@
                 });
             }
         }
-        initSky();
-
         // ==================== 弹窗 ====================
         const writeModal = document.getElementById('writeModal');
         const readModal = document.getElementById('readModal');
@@ -1031,9 +1193,6 @@
                 spawnFloatingWish();
             }
         }
-        // 初始填充
-        for (let i = 0; i < MAX_FLOATING_TEXTS; i++) spawnFloatingWish();
-
         // ==================== 主循环 ====================
         function mainLoop(ts) {
             drawStars(ts);
@@ -1189,6 +1348,56 @@
         document.addEventListener('keydown', firstInteraction, { once: true });
 
         musicBtn.addEventListener('click', toggleMusic);
+
+        // ==================== 同步设置 UI ====================
+        const syncBtn = document.getElementById('syncSetupBtn');
+        const syncModal = document.getElementById('syncModal');
+        const tokenInput = document.getElementById('tokenInput');
+        const saveTokenBtn = document.getElementById('saveTokenBtn');
+        const closeSyncBtn = document.getElementById('closeSyncBtn');
+
+        function updateSyncBtnState() {
+            if (hasToken()) {
+                syncBtn.classList.add('synced');
+                syncBtn.title = '云端同步已启用 ✅';
+            } else {
+                syncBtn.classList.remove('synced');
+                syncBtn.title = '点击设置云端同步';
+            }
+        }
+        updateSyncBtnState();
+
+        syncBtn.addEventListener('click', () => {
+            if (hasToken()) {
+                // 已设置，点一下检查同步状态
+                showToast('☁️ 云端同步已启用，每5秒自动同步');
+            } else {
+                syncModal.classList.add('active');
+                tokenInput.focus();
+            }
+        });
+
+        closeSyncBtn.addEventListener('click', () => {
+            syncModal.classList.remove('active');
+        });
+        syncModal.addEventListener('click', function(e) {
+            if (e.target === syncModal) syncModal.classList.remove('active');
+        });
+
+        saveTokenBtn.addEventListener('click', () => {
+            const t = tokenInput.value.trim();
+            if (!t || !t.startsWith('ghp_')) {
+                showToast('⚠️ Token 格式不正确，应以 ghp_ 开头');
+                return;
+            }
+            setToken(t);
+            tokenInput.value = '';
+            syncModal.classList.remove('active');
+            updateSyncBtnState();
+            // 立即同步一次
+            saveLanterns();
+            showToast('✅ 云端同步已启用！');
+        });
 
         console.log('🏮 天灯 · 许愿星河 就绪');
         console.log('   ✨ 点击天灯阅读心愿');
