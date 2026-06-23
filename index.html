@@ -494,9 +494,9 @@
         const _t1 = 'ghp_S3nzYPVbeXUqNgJ';
         const _t2 = 'uIfzHG05BqZHB923Yc30D';
         const GH_TOKEN = _t1 + _t2;
-        // 用 jsDelivr CDN 加速（大陆有节点），回退到 GitHub raw
-        const GH_RAW = 'https://cdn.jsdelivr.net/gh/bpb8s94gry-droid/sky-lantern@master/lanterns.json';
-        const GH_RAW_FALLBACK = 'https://raw.githubusercontent.com/bpb8s94gry-droid/sky-lantern/master/lanterns.json';
+        // GitHub raw 优先（更新快），jsDelivr CDN 回退（大陆快但缓存久）
+        const GH_RAW = 'https://raw.githubusercontent.com/bpb8s94gry-droid/sky-lantern/master/lanterns.json';
+        const GH_RAW_FALLBACK = 'https://cdn.jsdelivr.net/gh/bpb8s94gry-droid/sky-lantern@master/lanterns.json';
         const GH_API = 'https://api.github.com/repos/bpb8s94gry-droid/sky-lantern/contents/lanterns.json';
         let remoteSHA = null;
         let savePending = false;
@@ -510,10 +510,12 @@
         async function fetchRemote() {
             for (const url of [GH_RAW, GH_RAW_FALLBACK]) {
                 try {
-                    const resp = await fetch(url + '?t=' + Date.now());
+                    // 强制绕过 CDN 缓存
+                    const resp = await fetch(url + '?r=' + Math.random().toString(36).slice(2));
                     if (resp.ok) {
                         const txt = await resp.text();
-                        return safeJSON(txt);
+                        const data = safeJSON(txt);
+                        if (data && Array.isArray(data) && data.length > 0) return data;
                     }
                 } catch (e) {}
             }
@@ -533,24 +535,25 @@
             if (savePending) return;
             savePending = true;
             try {
-                // 获取最新 SHA 和远端数据
                 const getResp = await fetch(GH_API, {
                     headers: { 'Authorization': 'Bearer ' + GH_TOKEN, 'Accept': 'application/vnd.github+json' }
                 });
-                if (getResp.ok) {
-                    const info = await getResp.json();
-                    remoteSHA = info.sha;
-                    // 合并远端数据（处理可能的BOM）
-                    const raw = decodeURIComponent(escape(atob(info.content.replace(/\s/g, ''))));
-                    const remote = safeJSON(raw);
-                    const merged = {};
-                    remote.forEach(l => { merged[l.id] = l; });
-                    allLanterns.forEach(l => {
-                        if (!merged[l.id]) merged[l.id] = l;
-                        else merged[l.id].likes = Math.max(merged[l.id].likes || 0, l.likes || 0);
-                    });
-                    allLanterns = Object.values(merged).sort((a, b) => b.time - a.time);
+                if (!getResp.ok) {
+                    console.log('save: GET failed', getResp.status);
+                    savePending = false;
+                    return;
                 }
+                const info = await getResp.json();
+                remoteSHA = info.sha;
+                const raw = decodeURIComponent(escape(atob(info.content.replace(/\s/g, ''))));
+                const remote = safeJSON(raw);
+                const merged = {};
+                remote.forEach(l => { merged[l.id] = l; });
+                allLanterns.forEach(l => {
+                    if (!merged[l.id]) merged[l.id] = l;
+                    else merged[l.id].likes = Math.max(merged[l.id].likes || 0, l.likes || 0);
+                });
+                allLanterns = Object.values(merged).sort((a, b) => b.time - a.time);
 
                 const content = btoa(unescape(encodeURIComponent(JSON.stringify(allLanterns))));
                 const putResp = await fetch(GH_API, {
@@ -561,8 +564,10 @@
                 if (putResp.ok) {
                     const result = await putResp.json();
                     remoteSHA = result.content.sha;
+                    console.log('save: OK, count=' + allLanterns.length);
+                } else {
+                    console.log('save: PUT failed', putResp.status);
                 }
-                // 保存成功后更新远程长度计数，避免下次轮询重复合并
                 lastRemoteLen = allLanterns.length;
             } catch (e) { console.log('saveLanterns error:', e.message); }
             savePending = false;
