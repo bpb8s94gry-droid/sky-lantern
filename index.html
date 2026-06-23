@@ -499,11 +499,6 @@
             });
             saveLanterns();
         }
-        // 更新并初始化
-        updateCount();
-        initSky();
-        for (let i = 0; i < MAX_FLOATING_TEXTS; i++) spawnFloatingWish();
-
         // ==================== 星空画布 ====================
         const starCanvas = document.getElementById('starCanvas');
         const starCtx = starCanvas.getContext('2d');
@@ -1003,6 +998,11 @@
                 spawnFloatingWish();
             }
         }
+        // ==================== 初始化 ====================
+        updateCount();
+        initSky();
+        for (let i = 0; i < MAX_FLOATING_TEXTS; i++) spawnFloatingWish();
+
         // ==================== 主循环 ====================
         function mainLoop(ts) {
             drawStars(ts);
