@@ -330,7 +330,7 @@
     <canvas id="particleCanvas"></canvas>
 
     <!-- 音乐按钮 -->
-    <button class="music-btn" id="musicBtn" title="背景音乐">🔇</button>
+    <button class="music-btn on" id="musicBtn" title="背景音乐">🔊</button>
 
     <!-- 心愿文字背景 -->
     <div id="wishTextLayer"></div>
@@ -1054,8 +1054,9 @@
 
         // ==================== 环境音乐 ====================
         let audioCtx = null;
-        let musicOn = false;
+        let musicOn = true;
         let musicNodes = [];
+        let musicStarted = false;
         const musicBtn = document.getElementById('musicBtn');
 
         function createAmbient() {
@@ -1078,7 +1079,7 @@
                 const gain = audioCtx.createGain();
                 osc.type = 'sine';
                 osc.frequency.value = freq;
-                gain.gain.value = 0.025 / (i + 1);
+                gain.gain.value = 0.06 / (i + 1);
                 osc.connect(gain);
                 gain.connect(masterGain);
                 osc.start();
@@ -1089,7 +1090,7 @@
                 const gain2 = audioCtx.createGain();
                 osc2.type = 'sine';
                 osc2.frequency.value = freq + 1.2;
-                gain2.gain.value = 0.012 / (i + 1);
+                gain2.gain.value = 0.03 / (i + 1);
                 osc2.connect(gain2);
                 gain2.connect(masterGain);
                 osc2.start();
@@ -1098,10 +1099,10 @@
 
             // 缓慢的振幅调制（呼吸感）
             const lfoGain = audioCtx.createGain();
-            lfoGain.gain.value = 0.15;
+            lfoGain.gain.value = 0.2;
             const lfo = audioCtx.createOscillator();
             lfo.type = 'sine';
-            lfo.frequency.value = 0.12; // 非常慢
+            lfo.frequency.value = 0.12;
             lfo.connect(lfoGain);
             lfoGain.connect(masterGain.gain);
             lfo.start();
@@ -1110,32 +1111,67 @@
             musicNodes = { masterGain, oscillators };
         }
 
+        function startMusic(now) {
+            if (!now) now = audioCtx.currentTime;
+            musicNodes.masterGain.gain.cancelScheduledValues(now);
+            musicNodes.masterGain.gain.setValueAtTime(0.001, now);
+            musicNodes.masterGain.gain.linearRampToValueAtTime(0.18, now + 1);
+            musicOn = true;
+            musicStarted = true;
+            musicBtn.textContent = '🔊';
+            musicBtn.classList.add('on');
+        }
+
+        function stopMusic() {
+            const now = audioCtx.currentTime;
+            musicNodes.masterGain.gain.cancelScheduledValues(now);
+            musicNodes.masterGain.gain.setValueAtTime(musicNodes.masterGain.gain.value, now);
+            musicNodes.masterGain.gain.linearRampToValueAtTime(0.001, now + 0.8);
+            musicOn = false;
+            musicBtn.textContent = '🔇';
+            musicBtn.classList.remove('on');
+        }
+
         function toggleMusic() {
             if (!musicOn) {
-                // 开启
-                if (!audioCtx || audioCtx.state === 'closed') {
-                    createAmbient();
-                }
-                const now = audioCtx.currentTime;
-                musicNodes.masterGain.gain.cancelScheduledValues(now);
-                musicNodes.masterGain.gain.setValueAtTime(musicNodes.masterGain.gain.value || 0.001, now);
-                musicNodes.masterGain.gain.linearRampToValueAtTime(0.06, now + 1.5);
-                musicOn = true;
-                musicBtn.textContent = '🔊';
-                musicBtn.classList.add('on');
+                startMusic();
             } else {
-                // 关闭
-                const now = audioCtx.currentTime;
-                musicNodes.masterGain.gain.cancelScheduledValues(now);
-                musicNodes.masterGain.gain.setValueAtTime(musicNodes.masterGain.gain.value, now);
-                musicNodes.masterGain.gain.linearRampToValueAtTime(0.001, now + 1);
-                musicOn = false;
-                musicBtn.textContent = '🔇';
-                musicBtn.classList.remove('on');
+                stopMusic();
             }
         }
 
-        musicBtn.addEventListener('click', toggleMusic);
+        // 尝试自动播放（浏览器可能阻止，在首次用户交互时启动）
+        function tryAutoPlay() {
+            createAmbient();
+            // 尝试立即播放
+            audioCtx.resume().then(() => {
+                if (!musicStarted && musicOn) {
+                    startMusic(audioCtx.currentTime);
+                }
+            }).catch(() => {
+                // 浏览器阻止了，等用户交互
+            });
+        }
+        tryAutoPlay();
+
+        // 如果浏览器阻止了自动播放，在首次点击/触摸时启动
+        function resumeOnInteraction() {
+            if (!musicStarted && audioCtx && audioCtx.state === 'suspended') {
+                audioCtx.resume().then(() => {
+                    if (musicOn && !musicStarted) {
+                        startMusic(audioCtx.currentTime);
+                    }
+                });
+            }
+        }
+        document.addEventListener('click', resumeOnInteraction, { once: false });
+        document.addEventListener('touchstart', resumeOnInteraction, { once: false });
+        document.addEventListener('keydown', resumeOnInteraction, { once: false });
+
+        musicBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleMusic();
+        });
 
         console.log('🏮 天灯 · 许愿星河 就绪');
         console.log('   ✨ 点击天灯阅读心愿');
