@@ -253,38 +253,6 @@
         @keyframes toastIn { from { opacity: 0; transform: translateX(-50%) translateY(16px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
         @keyframes toastOut { from { opacity: 1; } to { opacity: 0; } }
 
-        /* ===== 音乐按钮 ===== */
-        .music-btn {
-            position: fixed; bottom: 20px; left: 20px; z-index: 50;
-            width: 42px; height: 42px; border-radius: 50%;
-            background: rgba(255,140,50,0.1);
-            border: 1px solid rgba(255,150,60,0.2);
-            color: rgba(255,200,150,0.6);
-            font-size: 18px; cursor: pointer;
-            display: flex; align-items: center; justify-content: center;
-            transition: all 0.4s;
-            backdrop-filter: blur(4px);
-        }
-        .music-btn:hover {
-            background: rgba(255,140,50,0.2);
-            border-color: rgba(255,150,60,0.4);
-            color: #ffe0c0;
-        }
-        .music-btn.on {
-            background: rgba(255,140,50,0.25);
-            border-color: rgba(255,160,70,0.5);
-            color: #ffe0c0;
-            box-shadow: 0 0 20px rgba(255,140,40,0.2);
-            animation: musicPulse 2s ease-in-out infinite;
-        }
-        @keyframes musicPulse {
-            0%, 100% { box-shadow: 0 0 20px rgba(255,140,40,0.2); }
-            50% { box-shadow: 0 0 35px rgba(255,140,40,0.4); }
-        }
-        @media (max-width: 640px) {
-            .music-btn { bottom: 14px; left: 14px; width: 36px; height: 36px; font-size: 15px; }
-        }
-
         /* ===== 响应式：手机端 ===== */
         @media (max-width: 640px) {
             .title { font-size: 28px; letter-spacing: 4px; }
@@ -328,9 +296,6 @@
 
     <!-- 粒子 -->
     <canvas id="particleCanvas"></canvas>
-
-    <!-- 音乐按钮 -->
-    <button class="music-btn on" id="musicBtn" title="背景音乐">🔊</button>
 
     <!-- 心愿文字背景 -->
     <div id="wishTextLayer"></div>
@@ -1052,158 +1017,9 @@
         }
         requestAnimationFrame(mainLoop);
 
-        // ==================== 环境音乐 ====================
-        let audioCtx = null;
-        let musicOn = true;
-        let masterGain = null;
-        let ambientNodes = [];
-        let musicStarted = false;
-        let chimeTimer = null;
-        const musicBtn = document.getElementById('musicBtn');
-
-        function destroyAllNodes() {
-            if (chimeTimer) { clearTimeout(chimeTimer); chimeTimer = null; }
-            ambientNodes.forEach(n => {
-                try { n.osc.stop(); } catch(e) {}
-                try { n.osc.disconnect(); } catch(e) {}
-                try { n.gain.disconnect(); } catch(e) {}
-            });
-            ambientNodes = [];
-        }
-
-        function playChime(freq, time, vol) {
-            if (!musicOn) return;
-            const osc = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-            osc.type = 'sine';
-            osc.frequency.value = freq;
-            gain.gain.setValueAtTime(0, time);
-            gain.gain.linearRampToValueAtTime(vol, time + 0.03);
-            gain.gain.exponentialRampToValueAtTime(0.0001, time + 1.8);
-            osc.connect(gain);
-            gain.connect(masterGain);
-            osc.start(time);
-            osc.stop(time + 2);
-        }
-
-        function scheduleChimes() {
-            if (!musicOn || !audioCtx || audioCtx.state === 'closed') return;
-            const scale = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33, 659.25, 784.00, 880.00];
-            const count = 1 + Math.floor(Math.random() * 3);
-            const now = audioCtx.currentTime;
-            for (let i = 0; i < count; i++) {
-                const freq = scale[Math.floor(Math.random() * scale.length)];
-                const t = now + Math.random() * 0.4;
-                playChime(freq, t, 0.03 + Math.random() * 0.04);
-            }
-            chimeTimer = setTimeout(scheduleChimes, 3000 + Math.random() * 5000);
-        }
-
-        function createAmbient() {
-            destroyAllNodes();
-            if (!audioCtx) {
-                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            }
-            if (audioCtx.state === 'suspended') audioCtx.resume();
-
-            // 如果 masterGain 还存在就复用它
-            if (!masterGain) {
-                masterGain = audioCtx.createGain();
-                masterGain.connect(audioCtx.destination);
-            }
-            masterGain.gain.value = 0;
-
-            const padFreqs = [130.81, 164.81, 196.00, 261.63, 329.63];
-            padFreqs.forEach((freq, i) => {
-                const osc = audioCtx.createOscillator();
-                const gain = audioCtx.createGain();
-                osc.type = 'sine';
-                osc.frequency.value = freq;
-                gain.gain.value = 0.08 / Math.sqrt(i + 1);
-                osc.connect(gain);
-                gain.connect(masterGain);
-                osc.start();
-                ambientNodes.push({ osc, gain });
-
-                const osc2 = audioCtx.createOscillator();
-                const gain2 = audioCtx.createGain();
-                osc2.type = 'sine';
-                osc2.frequency.value = freq * 2;
-                gain2.gain.value = 0.03 / Math.sqrt(i + 1);
-                osc2.connect(gain2);
-                gain2.connect(masterGain);
-                osc2.start();
-                ambientNodes.push({ osc: osc2, gain: gain2 });
-            });
-
-            const lfoGain = audioCtx.createGain();
-            lfoGain.gain.value = 0.15;
-            const lfo = audioCtx.createOscillator();
-            lfo.type = 'sine';
-            lfo.frequency.value = 0.15;
-            lfo.connect(lfoGain);
-            lfoGain.connect(masterGain.gain);
-            lfo.start();
-            ambientNodes.push({ osc: lfo, gain: lfoGain });
-        }
-
-        function startMusic() {
-            if (!audioCtx || masterGain === null) createAmbient();
-            if (audioCtx.state === 'suspended') audioCtx.resume();
-            const now = audioCtx.currentTime;
-            masterGain.gain.cancelScheduledValues(now);
-            masterGain.gain.setValueAtTime(0, now);
-            masterGain.gain.linearRampToValueAtTime(0.22, now + 1.2);
-            musicOn = true;
-            musicStarted = true;
-            musicBtn.textContent = '🔊';
-            musicBtn.classList.add('on');
-            scheduleChimes();
-        }
-
-        function stopMusic() {
-            if (chimeTimer) { clearTimeout(chimeTimer); chimeTimer = null; }
-            musicOn = false;
-            musicBtn.textContent = '🔇';
-            musicBtn.classList.remove('on');
-            if (masterGain) {
-                const now = audioCtx.currentTime;
-                masterGain.gain.cancelScheduledValues(now);
-                masterGain.gain.setValueAtTime(masterGain.gain.value, now);
-                masterGain.gain.linearRampToValueAtTime(0, now + 0.5);
-            }
-            destroyAllNodes();
-        }
-
-        function toggleMusic(e) {
-            if (e) e.stopPropagation();
-            if (musicOn) {
-                stopMusic();
-            } else {
-                createAmbient();  // 重新创建，确保干净
-                startMusic();
-            }
-        }
-
-        createAmbient();
-        musicBtn.textContent = '🔊';
-        musicBtn.classList.add('on');
-
-        function firstInteraction() {
-            if (!musicStarted && musicOn) {
-                startMusic();
-            }
-        }
-        document.addEventListener('click', firstInteraction, { once: true });
-        document.addEventListener('touchstart', firstInteraction, { once: true });
-        document.addEventListener('keydown', firstInteraction, { once: true });
-
-        musicBtn.addEventListener('click', toggleMusic);
-
         console.log('🏮 天灯 · 许愿星河 就绪');
         console.log('   ✨ 点击天灯阅读心愿');
         console.log('   ⌨️  按空格键写心愿');
-        console.log('   🎵  左下角按钮开关音乐');
     })();
     </script>
 </body>
