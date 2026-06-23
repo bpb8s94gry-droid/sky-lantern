@@ -579,18 +579,18 @@
 
         // 立即拉取远端更新（在保存后调用加速同步）
         async function quickSync() {
-            const remote = await fetchRemote();
-            if (remote && Array.isArray(remote) && remote.length > allLanterns.length) {
-                        lastRemoteLen = remote.length;
-                        const map = {};
-                        remote.forEach(l => { map[l.id] = l; });
-                        allLanterns.forEach(l => {
-                            if (!map[l.id]) map[l.id] = l;
-                            else map[l.id].likes = Math.max(map[l.id].likes || 0, l.likes || 0);
-                        });
-                        allLanterns = Object.values(map).sort((a, b) => b.time - a.time);
-                        updateCount();
-                    }
+            try {
+                const remote = await fetchRemote();
+                if (remote && Array.isArray(remote) && remote.length > allLanterns.length) {
+                    lastRemoteLen = remote.length;
+                    const map = {};
+                    remote.forEach(l => { map[l.id] = l; });
+                    allLanterns.forEach(l => {
+                        if (!map[l.id]) map[l.id] = l;
+                        else map[l.id].likes = Math.max(map[l.id].likes || 0, l.likes || 0);
+                    });
+                    allLanterns = Object.values(map).sort((a, b) => b.time - a.time);
+                    updateCount();
                 }
             } catch (e) {}
         }
