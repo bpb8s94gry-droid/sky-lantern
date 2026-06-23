@@ -496,15 +496,21 @@
         let remoteSHA = null;
         let savePending = false;
 
+        function safeJSON(txt) {
+            // 去掉可能的 BOM 和空白前缀
+            return JSON.parse(txt.replace(/^﻿/, '').trim());
+        }
+
         async function loadLanterns() {
             try {
                 const resp = await fetch(GH_RAW + '?t=' + Date.now());
                 if (resp.ok) {
-                    const data = await resp.json();
+                    const txt = await resp.text();
+                    const data = safeJSON(txt);
                     if (Array.isArray(data) && data.length > 0) return data;
                 }
-            } catch (e) {}
-            try { return JSON.parse(localStorage.getItem('sky_lanterns_v2') || '[]'); }
+            } catch (e) { console.log('loadLanterns error:', e.message); }
+            try { return safeJSON(localStorage.getItem('sky_lanterns_v2') || '[]'); }
             catch (e) { return []; }
         }
 
@@ -519,9 +525,9 @@
                 if (getResp.ok) {
                     const info = await getResp.json();
                     remoteSHA = info.sha;
-                    // 合并远端数据
-                    const raw = atob(info.content.replace(/\s/g, ''));
-                    const remote = JSON.parse(decodeURIComponent(escape(raw)));
+                    // 合并远端数据（处理可能的BOM）
+                    const raw = decodeURIComponent(escape(atob(info.content.replace(/\s/g, ''))));
+                    const remote = safeJSON(raw);
                     const merged = {};
                     remote.forEach(l => { merged[l.id] = l; });
                     allLanterns.forEach(l => {
@@ -541,7 +547,7 @@
                     const result = await putResp.json();
                     remoteSHA = result.content.sha;
                 }
-            } catch (e) { /* 静默失败 */ }
+            } catch (e) { console.log('saveLanterns error:', e.message); }
             savePending = false;
         }
 
@@ -633,7 +639,8 @@
             try {
                 const resp = await fetch(GH_RAW + '?t=' + Date.now());
                 if (resp.ok) {
-                    const remote = await resp.json();
+                    const txt = await resp.text();
+                    const remote = safeJSON(txt);
                     if (Array.isArray(remote)) {
                         const map = {};
                         remote.forEach(l => { map[l.id] = l; });
@@ -648,7 +655,7 @@
                         }
                     }
                 }
-            } catch (e) {}
+            } catch (e) { console.log('poll error:', e.message); }
         }, 4000);
 
         // ==================== 星空画布 ====================
