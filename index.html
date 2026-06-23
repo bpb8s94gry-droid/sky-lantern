@@ -423,6 +423,10 @@
             catch (e) {}
         }
 
+        function updateCount() {
+            document.getElementById('totalCount').textContent = allLanterns.length;
+        }
+
         allLanterns = loadLanterns();
 
         // 预置心愿
