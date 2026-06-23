@@ -494,7 +494,9 @@
         const _t1 = 'ghp_S3nzYPVbeXUqNgJ';
         const _t2 = 'uIfzHG05BqZHB923Yc30D';
         const GH_TOKEN = _t1 + _t2;
-        const GH_RAW = 'https://raw.githubusercontent.com/bpb8s94gry-droid/sky-lantern/master/lanterns.json';
+        // 用 jsDelivr CDN 加速（大陆有节点），回退到 GitHub raw
+        const GH_RAW = 'https://cdn.jsdelivr.net/gh/bpb8s94gry-droid/sky-lantern@master/lanterns.json';
+        const GH_RAW_FALLBACK = 'https://raw.githubusercontent.com/bpb8s94gry-droid/sky-lantern/master/lanterns.json';
         const GH_API = 'https://api.github.com/repos/bpb8s94gry-droid/sky-lantern/contents/lanterns.json';
         let remoteSHA = null;
         let savePending = false;
@@ -504,15 +506,25 @@
             return JSON.parse(txt.replace(/^﻿/, '').trim());
         }
 
+        // 从云端读取（CDN 优先，GitHub 回退）
+        async function fetchRemote() {
+            for (const url of [GH_RAW, GH_RAW_FALLBACK]) {
+                try {
+                    const resp = await fetch(url + '?t=' + Date.now());
+                    if (resp.ok) {
+                        const txt = await resp.text();
+                        return safeJSON(txt);
+                    }
+                } catch (e) {}
+            }
+            return null;
+        }
+
         async function loadLanterns() {
             try {
-                const resp = await fetch(GH_RAW + '?t=' + Date.now());
-                if (resp.ok) {
-                    const txt = await resp.text();
-                    const data = safeJSON(txt);
-                    if (Array.isArray(data) && data.length > 0) return data;
-                }
-            } catch (e) { console.log('loadLanterns error:', e.message); }
+                const data = await fetchRemote();
+                if (data && Array.isArray(data) && data.length > 0) return data;
+            } catch (e) {}
             try { return safeJSON(localStorage.getItem('sky_lanterns_v2') || '[]'); }
             catch (e) { return []; }
         }
@@ -558,11 +570,8 @@
 
         // 立即拉取远端更新（在保存后调用加速同步）
         async function quickSync() {
-            try {
-                const resp = await fetch(GH_RAW + '?t=' + Date.now());
-                if (resp.ok) {
-                    const remote = safeJSON(await resp.text());
-                    if (Array.isArray(remote) && remote.length > allLanterns.length) {
+            const remote = await fetchRemote();
+            if (remote && Array.isArray(remote) && remote.length > allLanterns.length) {
                         lastRemoteLen = remote.length;
                         const map = {};
                         remote.forEach(l => { map[l.id] = l; });
@@ -669,28 +678,22 @@
         })();
 
         // 定期同步云端数据（2秒一次，反应更快）
-        let lastRemoteLen = -1;  // -1 表示还没同步过，首次无条件合并
+        let lastRemoteLen = -1;
         setInterval(async () => {
             try {
-                const resp = await fetch(GH_RAW + '?t=' + Date.now());
-                if (resp.ok) {
-                    const txt = await resp.text();
-                    const remote = safeJSON(txt);
-                    if (Array.isArray(remote) && remote.length !== lastRemoteLen) {
-                        lastRemoteLen = remote.length;
-                        const map = {};
-                        remote.forEach(l => { map[l.id] = l; });
-                        allLanterns.forEach(l => {
-                            if (!map[l.id]) map[l.id] = l;
-                            else map[l.id].likes = Math.max(map[l.id].likes || 0, l.likes || 0);
-                        });
-                        if (Object.keys(map).length !== allLanterns.length) {
-                            allLanterns = Object.values(map).sort((a, b) => b.time - a.time);
-                            updateCount();
-                        }
-                    }
+                const remote = await fetchRemote();
+                if (remote && Array.isArray(remote) && remote.length !== lastRemoteLen) {
+                    lastRemoteLen = remote.length;
+                    const map = {};
+                    remote.forEach(l => { map[l.id] = l; });
+                    allLanterns.forEach(l => {
+                        if (!map[l.id]) map[l.id] = l;
+                        else map[l.id].likes = Math.max(map[l.id].likes || 0, l.likes || 0);
+                    });
+                    allLanterns = Object.values(map).sort((a, b) => b.time - a.time);
+                    updateCount();
                 }
-            } catch (e) { /* 忽略轮询错误 */ }
+            } catch (e) {}
         }, 2000);
 
         // ==================== 星空画布 ====================
