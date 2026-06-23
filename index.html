@@ -547,8 +547,31 @@
                     const result = await putResp.json();
                     remoteSHA = result.content.sha;
                 }
+                // 保存成功后更新远程长度计数，避免下次轮询重复合并
+                lastRemoteLen = allLanterns.length;
             } catch (e) { console.log('saveLanterns error:', e.message); }
             savePending = false;
+        }
+
+        // 立即拉取远端更新（在保存后调用加速同步）
+        async function quickSync() {
+            try {
+                const resp = await fetch(GH_RAW + '?t=' + Date.now());
+                if (resp.ok) {
+                    const remote = safeJSON(await resp.text());
+                    if (Array.isArray(remote) && remote.length > allLanterns.length) {
+                        lastRemoteLen = remote.length;
+                        const map = {};
+                        remote.forEach(l => { map[l.id] = l; });
+                        allLanterns.forEach(l => {
+                            if (!map[l.id]) map[l.id] = l;
+                            else map[l.id].likes = Math.max(map[l.id].likes || 0, l.likes || 0);
+                        });
+                        allLanterns = Object.values(map).sort((a, b) => b.time - a.time);
+                        updateCount();
+                    }
+                }
+            } catch (e) {}
         }
 
         function updateCount() {
@@ -634,29 +657,30 @@
             for (let i = 0; i < MAX_FLOATING_TEXTS; i++) spawnFloatingWish();
         })();
 
-        // 定期同步云端数据
+        // 定期同步云端数据（2秒一次，反应更快）
+        let lastRemoteLen = allLanterns.length;
         setInterval(async () => {
             try {
                 const resp = await fetch(GH_RAW + '?t=' + Date.now());
                 if (resp.ok) {
                     const txt = await resp.text();
                     const remote = safeJSON(txt);
-                    if (Array.isArray(remote)) {
+                    if (Array.isArray(remote) && remote.length !== lastRemoteLen) {
+                        lastRemoteLen = remote.length;
                         const map = {};
                         remote.forEach(l => { map[l.id] = l; });
-                        let changed = false;
                         allLanterns.forEach(l => {
-                            if (!map[l.id]) { map[l.id] = l; changed = true; }
-                            else if ((map[l.id].likes || 0) > (l.likes || 0)) { l.likes = map[l.id].likes; changed = true; }
+                            if (!map[l.id]) map[l.id] = l;
+                            else map[l.id].likes = Math.max(map[l.id].likes || 0, l.likes || 0);
                         });
-                        if (changed || Object.keys(map).length !== allLanterns.length) {
+                        if (Object.keys(map).length !== allLanterns.length) {
                             allLanterns = Object.values(map).sort((a, b) => b.time - a.time);
                             updateCount();
                         }
                     }
                 }
-            } catch (e) { console.log('poll error:', e.message); }
-        }, 4000);
+            } catch (e) { /* 忽略轮询错误 */ }
+        }, 2000);
 
         // ==================== 星空画布 ====================
         const starCanvas = document.getElementById('starCanvas');
