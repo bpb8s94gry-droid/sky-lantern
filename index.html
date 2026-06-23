@@ -386,9 +386,7 @@
             <button class="btn-light" id="mainBtn">
                 <span class="fire-icon">🔥</span> 放飞我的天灯
             </button>
-            <button class="btn-wall" id="wallBtn" style="margin-left:12px;">
-                💌 心愿墙
-            </button>
+            <!-- 心愿墙仅管理员可见，按 W 键打开 -->
         </div>
     </div>
 
@@ -960,7 +958,6 @@
             wallModal.classList.remove('active');
         }
 
-        document.getElementById('wallBtn').addEventListener('click', openWall);
         document.getElementById('closeWallBtn').addEventListener('click', closeWall);
         wallModal.addEventListener('click', function(e) {
             if (e.target === wallModal) closeWall();
@@ -1056,10 +1053,14 @@
             if (e.key === 'Escape') {
                 closeWriteModal();
                 closeReadModal();
+                closeWall();
             }
-            if (e.key === ' ' && !writeModal.classList.contains('active') && !readModal.classList.contains('active')) {
+            if (e.key === ' ' && !writeModal.classList.contains('active') && !readModal.classList.contains('active') && !wallModal.classList.contains('active')) {
                 e.preventDefault();
                 openWriteModal();
+            }
+            if (e.key === 'w' && !writeModal.classList.contains('active') && !readModal.classList.contains('active') && !wallModal.classList.contains('active')) {
+                openWall();
             }
         });
 
@@ -1141,7 +1142,8 @@
 
         console.log('🏮 天灯 · 许愿星河 就绪');
         console.log('   ✨ 点击天灯阅读心愿');
-        console.log('   ⌨️  按空格键写心愿');
+        console.log('   ⌨️  空格键 = 写心愿');
+        console.log('   ⌨️  W键 = 心愿墙（管理员）');
     })();
     </script>
 </body>
