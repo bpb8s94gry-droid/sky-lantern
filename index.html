@@ -486,24 +486,48 @@
             resizePtCanvas();
         });
 
-        // ==================== 本地数据存储 ====================
-        function loadLanterns() {
+        // ==================== 云端数据同步 ====================
+        const CLOUD_URL = 'https://jsonblob.com/api/jsonBlob/019ef6bd-0fdb-7a42-9be6-1f09b1e24ef9';
+        let saveTimeout = null;
+
+        async function loadLanterns() {
+            // 先从云端加载
+            try {
+                const resp = await fetch(CLOUD_URL + '?t=' + Date.now());
+                if (resp.ok) {
+                    const data = await resp.json();
+                    if (Array.isArray(data) && data.length > 0) return data;
+                }
+            } catch (e) {}
+            // 回退 localStorage
             try { return JSON.parse(localStorage.getItem('sky_lanterns_v2') || '[]'); }
             catch (e) { return []; }
         }
+
         function saveLanterns() {
-            try { localStorage.setItem('sky_lanterns_v2', JSON.stringify(allLanterns)); }
-            catch (e) {}
+            // 防抖：300ms 内多次调用只执行最后一次
+            clearTimeout(saveTimeout);
+            saveTimeout = setTimeout(async () => {
+                try {
+                    await fetch(CLOUD_URL, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(allLanterns)
+                    });
+                } catch (e) {}
+            }, 300);
         }
 
         function updateCount() {
             document.getElementById('totalCount').textContent = allLanterns.length;
         }
 
-        allLanterns = loadLanterns();
+        allLanterns = [];
 
-        // 预置心愿
-        if (allLanterns.length === 0) {
+        // 异步初始化：从云端加载
+        (async function initData() {
+            allLanterns = await loadLanterns();
+            if (allLanterns.length === 0) {
             const demos = [
                 // ---- 学业梦想 ----
                 ['2026高考上岸！！目标清华！', 2],
@@ -570,8 +594,34 @@
                     likes: Math.floor(Math.random() * 35) + 3,
                 });
             });
-            saveLanterns();
-        }
+                saveLanterns();
+            }
+            updateCount();
+            initSky();
+            for (let i = 0; i < MAX_FLOATING_TEXTS; i++) spawnFloatingWish();
+        })();
+
+        // 定期同步云端数据
+        setInterval(async () => {
+            try {
+                const resp = await fetch(CLOUD_URL + '?t=' + Date.now());
+                if (resp.ok) {
+                    const remote = await resp.json();
+                    if (Array.isArray(remote) && remote.length !== allLanterns.length) {
+                        // 合并：保留本地的点赞数（如果更大）
+                        const map = {};
+                        remote.forEach(l => { map[l.id] = l; });
+                        allLanterns.forEach(l => {
+                            if (!map[l.id]) map[l.id] = l;
+                            else map[l.id].likes = Math.max(map[l.id].likes || 0, l.likes || 0);
+                        });
+                        allLanterns = Object.values(map).sort((a, b) => b.time - a.time);
+                        updateCount();
+                    }
+                }
+            } catch (e) {}
+        }, 4000);
+
         // ==================== 星空画布 ====================
         const starCanvas = document.getElementById('starCanvas');
         const starCtx = starCanvas.getContext('2d');
@@ -1117,11 +1167,6 @@
                 spawnFloatingWish();
             }
         }
-        // ==================== 初始化 ====================
-        updateCount();
-        initSky();
-        for (let i = 0; i < MAX_FLOATING_TEXTS; i++) spawnFloatingWish();
-
         // ==================== 主循环 ====================
         function mainLoop(ts) {
             drawStars(ts);
