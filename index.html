@@ -1096,7 +1096,10 @@
             if (e.target === wallModal) closeWall();
         });
 
-        document.getElementById('mainBtn').addEventListener('click', openWriteModal);
+        document.getElementById('mainBtn').addEventListener('click', function(e) {
+            console.log('mainBtn clicked');
+            openWriteModal();
+        });
         document.getElementById('closeWriteBtn').addEventListener('click', closeWriteModal);
         document.getElementById('closeReadBtn').addEventListener('click', closeReadModal);
 
